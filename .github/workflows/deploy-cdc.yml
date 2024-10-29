@@ -1,0 +1,58 @@
+name: Deploy Snowflake CDC
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Install SnowSQL
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-pip
+        pip3 install snowflake-connector-python snowflake-sqlalchemy
+
+    - name: Execute SQL scripts
+      env:
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      run: |
+        python3 - <<EOF
+        import snowflake.connector
+
+        # Snowflake connection
+        conn = snowflake.connector.connect(
+            user="${{ secrets.SNOWFLAKE_USER }}",
+            password="${{ secrets.SNOWFLAKE_PASSWORD }}",
+            account="${{ secrets.SNOWFLAKE_ACCOUNT }}",
+            role="${{ secrets.SNOWFLAKE_ROLE }}",
+            warehouse="${{ secrets.SNOWFLAKE_WAREHOUSE }}"
+        )
+
+        # Execute each SQL file
+        files = [
+            "sql/create_tables.sql",
+            "sql/initial_load.sql",
+            "sql/create_stream_task.sql",
+            "sql/test_changes.sql"
+        ]
+
+        for file in files:
+            with open(file, "r") as sql_file:
+                sql_commands = sql_file.read()
+                for command in sql_commands.split(";"):
+                    if command.strip():
+                        conn.cursor().execute(command)
+        
+        conn.close()
+        EOF
